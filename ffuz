@@ -1,0 +1,83 @@
+#!/usr/bin/zsh
+
+wordlist="/home/op/lists/seclists/Discovery/Web-Content/common.txt"
+file=false
+mode="file"
+ffuf_args="/home/op/go/bin/ffuf"
+additional_args=""
+
+name="$(date +%s)"
+output_dir="$HOME/ffuf"
+mkdir -p "$output_dir/tmp"
+
+counter=1
+for arg in $@
+do
+    set=false
+    if [[ "$arg" == "--show" ]]; then
+        all="$output_dir/all.csv"
+
+        if [[ -f "$all" ]]; then
+            header=$(head -n 1 "$all")
+            (echo $header; cat "$all" | grep $3 "$2" | grep -v "$header" | sed 's/,,/,_,/g' | sort -k 2,3 -t',' -u -V) | cut -d "," -f1-7 |column -t -s, | awk '$1 !~ /http/ { print }' |bat --style=grid
+        else
+            echo "There are no results!"
+        fi
+        exit
+    fi
+    if [[ "$arg" == "-f" ]]; then
+        wordlist="/home/op/lists/seclists/Discovery/Web-Content/raft-small-files.txt"
+        set=true
+    fi
+    if [[ "$arg" == "-d" ]]; then
+        wordlist="/home/op/lists/seclists/Discovery/Web-Content/raft-large-directories.txt"
+        set=true
+    fi
+	if [[ "$arg" == "-o" ]]; then
+        one=$(expr $counter + 1)
+        outfile=$(eval echo "\$$one")
+        set=true
+    fi
+
+    if [[ "$arg" == "-i" ]]; then
+        mode="file"
+        one=$(expr $counter + 1)
+        file=$(eval echo "\$$one")
+        set=true
+    fi
+    if [[ "$arg" == "-s" ]]; then
+       mode="stdin"
+        set=true
+    fi
+    counter=$(expr $counter + 1)
+
+    if [[ "$set" == "false" ]]; then
+        additional_args="$additional_args $arg"
+    fi
+done
+
+ffuf_args="$ffuf_args -w $wordlist"
+
+if [[ "$mode" == "single" ]]; then
+    echo "Single mode!"
+fi
+
+if [[ "$mode" == "file" ]]; then
+    if [[ -f "$file" ]]; then
+        echo "Using target file: '$file'"
+        ffuf_args="$ffuf_args -w $file:HOST"
+    else
+        echo "Error: '$file' does not exist..."
+        exit 1
+    fi
+fi
+
+if [[ "$mode" == "stdin" ]]; then
+    echo "Using stdin mode... Accepting URLs from stdin..."
+    ffuf_args="$ffuf_args -w -:HOST"
+fi
+
+ffuf_args="$ffuf_args -u \"HOST/FUZZ\" -of csv -o $outfile $additional_args"
+echo $ffuf_args
+zsh -c "$ffuf_args"
+
